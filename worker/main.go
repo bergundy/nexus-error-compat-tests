@@ -51,28 +51,34 @@ func main() {
 	service := nexus.NewService(serviceName)
 
 	// Sync operation
-	syncOp := nexus.NewSyncOperation("sync-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
+	syncOp := nexus.NewSyncOperation("sync-op", func(ctx context.Context, outcome string, opts nexus.StartOperationOptions) (string, error) {
 		// TODO:
 		// - OperationError and HandlerError with both message and cause
-		// - Direct ApplicationError
-		// - OperationError with CanceledError as cause
 		// Handle different test scenarios
-		switch input {
-		case "success":
-			return "success", nil
-		case "operation-failure":
+		switch outcome {
+		case "operation-failed-error":
 			return "", nexus.NewOperationFailedError("operation failed for test")
-		case "application-error":
+		case "operation-canceled-error-with-details":
+			return "", &nexus.OperationError{
+				State: nexus.OperationStateCanceled,
+				Cause: temporal.NewCanceledError("cancel-details"),
+			}
+		case "wrapped-application-error":
 			return "", &nexus.OperationError{
 				State: nexus.OperationStateFailed,
 				Cause: temporal.NewApplicationError("application error for test", "TestErrorType", "details"),
 			}
+		case "application-error":
+			return "", temporal.NewApplicationErrorWithOptions("application error for test", "TestErrorType", temporal.ApplicationErrorOptions{
+				NonRetryable: true,
+				Details:      []any{"details"},
+			})
 		case "handler-error":
 			return "", nexus.HandlerErrorf(nexus.HandlerErrorTypeBadRequest, "handler error for test")
 		case "canceled":
 			return "", nexus.NewOperationCanceledError("operation canceled for test")
 		default:
-			return fmt.Sprintf("echo: %s", input), nil
+			return "", nexus.HandlerErrorf(nexus.HandlerErrorTypeBadRequest, "invalid outcome: %q", outcome)
 		}
 	})
 
@@ -81,6 +87,8 @@ func main() {
 		"async-op",
 		AsyncHandlerWorkflow,
 		func(ctx context.Context, input string, opts nexus.StartOperationOptions) (client.StartWorkflowOptions, error) {
+			// To prevent local server from sending response to itself if both caller and handler are on
+			// the same host since they will have a shared cluster ID.
 			delete(opts.CallbackHeader, "source")
 			// Use RequestID as workflow ID for idempotency
 			return client.StartWorkflowOptions{
@@ -118,11 +126,9 @@ func main() {
 }
 
 // AsyncHandlerWorkflow is the workflow that backs the async Nexus operation
-func AsyncHandlerWorkflow(ctx workflow.Context, input string) (string, error) {
-	switch input {
-	case "success":
-		return "success", nil
-	case "workflow-failure":
+func AsyncHandlerWorkflow(ctx workflow.Context, outcome string) (string, error) {
+	switch outcome {
+	case "plain-error":
 		return "", fmt.Errorf("workflow failed for test")
 	case "application-error":
 		return "", temporal.NewApplicationError("application error for test", "TestErrorType", "details")
@@ -130,6 +136,6 @@ func AsyncHandlerWorkflow(ctx workflow.Context, input string) (string, error) {
 		// Wait indefinitely for cancellation
 		return "", workflow.Await(ctx, func() bool { return false })
 	default:
-		return fmt.Sprintf("async echo: %s", input), nil
+		return "", fmt.Errorf("invalid outcome: %q", outcome)
 	}
 }

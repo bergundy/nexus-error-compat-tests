@@ -2,65 +2,17 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
+	"github.com/nexus-rpc/sdk-go/nexus"
+	"github.com/stretchr/testify/require"
 	"github.com/temporalio/nexus-error-compat-tests/config"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
 )
-
-// TestSyncOperationSuccess tests successful execution of a sync Nexus operation
-func TestSyncOperationSuccess(t *testing.T) {
-	tc := NewTestContext(t, config.DefaultTestConfig())
-
-	// Define caller workflow
-	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
-		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		fut := c.ExecuteOperation(ctx, "sync-op", input, workflow.NexusOperationOptions{})
-
-		var result string
-		if err := fut.Get(ctx, &result); err != nil {
-			return "", err
-		}
-		return result, nil
-	}
-
-	// Start caller worker
-	w := worker.New(tc.CallerClient, tc.CallerTaskQueue, worker.Options{})
-	w.RegisterWorkflow(callerWorkflow)
-	if err := w.Start(); err != nil {
-		t.Fatalf("Failed to start worker: %v", err)
-	}
-	defer w.Stop()
-
-	// Execute workflow
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	run, err := tc.CallerClient.ExecuteWorkflow(ctx,
-		client.StartWorkflowOptions{
-			TaskQueue: tc.CallerTaskQueue,
-		},
-		callerWorkflow, "success")
-	if err != nil {
-		t.Fatalf("Failed to start workflow: %v", err)
-	}
-
-	var result string
-	if err := run.Get(ctx, &result); err != nil {
-		t.Fatalf("Workflow execution failed: %v", err)
-	}
-
-	if result != "success" {
-		t.Errorf("Expected result 'success', got '%s'", result)
-	}
-
-	t.Logf("Sync operation completed successfully with result: %s", result)
-}
 
 // TestSyncOperationFailure tests operation failure scenarios
 func TestSyncOperationFailure(t *testing.T) {
@@ -78,19 +30,104 @@ func TestSyncOperationFailure(t *testing.T) {
 	// Start caller worker
 	w := worker.New(tc.CallerClient, tc.CallerTaskQueue, worker.Options{})
 	w.RegisterWorkflow(callerWorkflow)
-	if err := w.Start(); err != nil {
-		t.Fatalf("Failed to start worker: %v", err)
-	}
+	require.NoError(t, w.Start())
 	defer w.Stop()
 
 	tests := []struct {
-		name  string
-		input string
+		name     string
+		outcome  string
+		checkErr func(t *testing.T, err error)
 	}{
-		{"OperationFailure", "operation-failure"},
-		{"ApplicationError", "application-error"},
-		{"HandlerError", "handler-error"},
-		{"Canceled", "canceled"},
+		{
+			"OperationFailure",
+			"operation-failed-error",
+			func(t *testing.T, err error) {
+				var nexusErr *temporal.NexusOperationError
+				require.ErrorAs(t, err, &nexusErr)
+
+				// Verify error metadata
+				require.Equal(t, tc.CallerEndpoint, nexusErr.Endpoint)
+				require.Equal(t, "test-service", nexusErr.Service)
+				require.Equal(t, "sync-op", nexusErr.Operation)
+				// Old behavior
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, nexusErr.Cause, &appErr)
+				require.Equal(t, "operation failed for test", appErr.Message())
+			},
+		},
+		{
+			"WrappedApplicationError",
+			"wrapped-application-error",
+			func(t *testing.T, err error) {
+				var nexusErr *temporal.NexusOperationError
+				require.ErrorAs(t, err, &nexusErr)
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, nexusErr.Cause, &appErr)
+				require.Equal(t, "application error for test", appErr.Message())
+				require.Equal(t, "TestErrorType", appErr.Type())
+				var details string
+				require.NoError(t, appErr.Details(&details))
+				require.Equal(t, "details", details)
+			},
+		},
+		{
+			"ApplicationError",
+			"application-error",
+			func(t *testing.T, err error) {
+				var nexusErr *temporal.NexusOperationError
+				require.ErrorAs(t, err, &nexusErr)
+				// ApplicationError expected to be wrapped with HandlerError on the handler SDK.
+				var handlerErr *nexus.HandlerError
+				require.ErrorAs(t, nexusErr.Cause, &handlerErr)
+				require.Equal(t, nexus.HandlerErrorTypeInternal, handlerErr.Type)
+				require.False(t, handlerErr.Retryable())
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, handlerErr.Cause, &appErr)
+				require.Equal(t, "application error for test", appErr.Message())
+				require.Equal(t, "TestErrorType", appErr.Type())
+				var details string
+				require.NoError(t, appErr.Details(&details))
+				require.Equal(t, "details", details)
+			},
+		},
+		{
+			"HandlerError",
+			"handler-error",
+			func(t *testing.T, err error) {
+				var nexusErr *temporal.NexusOperationError
+				require.ErrorAs(t, err, &nexusErr)
+				var handlerErr *nexus.HandlerError
+				require.ErrorAs(t, nexusErr.Cause, &handlerErr)
+				require.Equal(t, nexus.HandlerErrorTypeBadRequest, handlerErr.Type)
+				require.False(t, handlerErr.Retryable())
+				// Old behavior
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, handlerErr.Cause, &appErr)
+				require.Equal(t, "handler error for test", appErr.Message())
+			},
+		},
+		{
+			"Canceled",
+			"canceled",
+			func(t *testing.T, err error) {
+				// The Go SDK unwraps workflow errors to check for cancelation even if the workflow was
+				// never canceled, losing the error chain, Nexus operation errors are treated the same
+				// as other workflow errors for consistency.
+				var canceledErr *temporal.CanceledError
+				require.ErrorAs(t, err, &canceledErr)
+			},
+		},
+		{
+			"OperationCancelationWithDetails",
+			"operation-canceled-error-with-details",
+			func(t *testing.T, err error) {
+				var canceledErr *temporal.CanceledError
+				require.ErrorAs(t, err, &canceledErr)
+				var details string
+				require.NoError(t, canceledErr.Details(&details))
+				require.Equal(t, "cancel-details", details)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -102,97 +139,18 @@ func TestSyncOperationFailure(t *testing.T) {
 				client.StartWorkflowOptions{
 					TaskQueue: tc.CallerTaskQueue,
 				},
-				callerWorkflow, tt.input)
-			if err != nil {
-				t.Fatalf("Failed to start workflow: %v", err)
-			}
+				callerWorkflow, tt.outcome)
+			require.NoError(t, err)
 
 			var result string
 			err = run.Get(ctx, &result)
-			if err == nil {
-				t.Errorf("Expected error but got none, result: %s", result)
-				return
-			}
 
 			// Verify we got a workflow execution error
 			var execErr *temporal.WorkflowExecutionError
-			if !errors.As(err, &execErr) {
-				t.Errorf("Expected WorkflowExecutionError, got: %v", err)
-				return
-			}
+			require.ErrorAs(t, err, &execErr)
 
-			// Check for NexusOperationError
 			unwrapped := execErr.Unwrap()
-			var nexusErr *temporal.NexusOperationError
-			if !errors.As(unwrapped, &nexusErr) {
-				t.Errorf("Expected NexusOperationError, got: %v", unwrapped)
-				return
-			}
-
-			// Verify error metadata
-			if nexusErr.Endpoint != tc.CallerEndpoint {
-				t.Errorf("Expected endpoint %s, got %s", tc.CallerEndpoint, nexusErr.Endpoint)
-			}
-			if nexusErr.Service != "test-service" {
-				t.Errorf("Expected service 'test-service', got %s", nexusErr.Service)
-			}
-			if nexusErr.Operation != "sync-op" {
-				t.Errorf("Expected operation 'sync-op', got %s", nexusErr.Operation)
-			}
-
-			t.Logf("Error scenario '%s' completed as expected: %v", tt.name, err)
+			tt.checkErr(t, unwrapped)
 		})
 	}
-}
-
-// TestSyncOperationEcho tests echo functionality with arbitrary input
-func TestSyncOperationEcho(t *testing.T) {
-	tc := NewTestContext(t, config.DefaultTestConfig())
-
-	// Define caller workflow
-	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
-		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		fut := c.ExecuteOperation(ctx, "sync-op", input, workflow.NexusOperationOptions{})
-
-		var result string
-		if err := fut.Get(ctx, &result); err != nil {
-			return "", err
-		}
-		return result, nil
-	}
-
-	// Start caller worker
-	w := worker.New(tc.CallerClient, tc.CallerTaskQueue, worker.Options{})
-	w.RegisterWorkflow(callerWorkflow)
-	if err := w.Start(); err != nil {
-		t.Fatalf("Failed to start worker: %v", err)
-	}
-	defer w.Stop()
-
-	// Test with arbitrary input
-	testInput := "hello from caller"
-	expectedOutput := "echo: " + testInput
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	run, err := tc.CallerClient.ExecuteWorkflow(ctx,
-		client.StartWorkflowOptions{
-			TaskQueue: tc.CallerTaskQueue,
-		},
-		callerWorkflow, testInput)
-	if err != nil {
-		t.Fatalf("Failed to start workflow: %v", err)
-	}
-
-	var result string
-	if err := run.Get(ctx, &result); err != nil {
-		t.Fatalf("Workflow execution failed: %v", err)
-	}
-
-	if result != expectedOutput {
-		t.Errorf("Expected result '%s', got '%s'", expectedOutput, result)
-	}
-
-	t.Logf("Echo test passed: %s", result)
 }
