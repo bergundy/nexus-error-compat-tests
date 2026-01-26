@@ -133,13 +133,14 @@ func SetupTestEnvironment(ctx context.Context, cfg config.TestConfig) (*TestEnvi
 
 	// Step 11: Start handler worker
 	fmt.Printf("Starting handler worker for task queue %s...\n", env.HandlerTaskQueue)
-	workerBinary := os.Getenv("HANDLER_WORKER_BIN")
-	if workerBinary == "" {
-		workerBinary = "./bin/handler-worker"
+	workerCmdStr := os.Getenv("HANDLER_WORKER_CMD")
+	if workerCmdStr == "" {
+		workerCmdStr = "go run -C ../worker ."
 	}
+	workerCmd := config.ParseCommand(workerCmdStr)
 
 	handlerWorker, err := StartHandlerWorker(ctx, config.WorkerConfig{
-		BinaryPath: workerBinary,
+		Command:    workerCmd,
 		ServerAddr: cfg.HandlerServer.GRPCAddr,
 		Namespace:  cfg.HandlerNamespace,
 		TaskQueue:  env.HandlerTaskQueue,

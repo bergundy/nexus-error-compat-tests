@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nexus-rpc/sdk-go/nexus"
 	"github.com/temporalio/nexus-error-compat-tests/config"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -21,12 +20,7 @@ func TestSyncOperationSuccess(t *testing.T) {
 	// Define caller workflow
 	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
 		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		op := nexus.NewSyncOperation[string, string]("sync-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
-			// Handler is in separate process, this is just for type signature
-			panic("should not be called")
-		})
-
-		fut := c.ExecuteOperation(ctx, op, input, workflow.NexusOperationOptions{})
+		fut := c.ExecuteOperation(ctx, "sync-op", input, workflow.NexusOperationOptions{})
 
 		var result string
 		if err := fut.Get(ctx, &result); err != nil {
@@ -75,11 +69,7 @@ func TestSyncOperationFailure(t *testing.T) {
 	// Define caller workflow
 	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
 		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		op := nexus.NewSyncOperation[string, string]("sync-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
-			panic("should not be called")
-		})
-
-		fut := c.ExecuteOperation(ctx, op, input, workflow.NexusOperationOptions{})
+		fut := c.ExecuteOperation(ctx, "sync-op", input, workflow.NexusOperationOptions{})
 
 		var result string
 		return result, fut.Get(ctx, &result)
@@ -162,11 +152,7 @@ func TestSyncOperationEcho(t *testing.T) {
 	// Define caller workflow
 	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
 		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		op := nexus.NewSyncOperation[string, string]("sync-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
-			panic("should not be called")
-		})
-
-		fut := c.ExecuteOperation(ctx, op, input, workflow.NexusOperationOptions{})
+		fut := c.ExecuteOperation(ctx, "sync-op", input, workflow.NexusOperationOptions{})
 
 		var result string
 		if err := fut.Get(ctx, &result); err != nil {

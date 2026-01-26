@@ -8,7 +8,9 @@ import (
 	"go.temporal.io/api/nexus/v1"
 	"go.temporal.io/api/operatorservice/v1"
 	"go.temporal.io/api/serviceerror"
+	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // EndpointInfo holds information about a created Nexus endpoint
@@ -19,10 +21,10 @@ type EndpointInfo struct {
 
 // CreateNamespace creates a namespace on the given client (idempotent)
 func CreateNamespace(ctx context.Context, c client.Client, namespace string) error {
-	_, err := c.OperatorService().CreateNamespace(ctx, &operatorservice.CreateNamespaceRequest{
+	_, err := c.WorkflowService().RegisterNamespace(ctx, &workflowservice.RegisterNamespaceRequest{
 		Namespace: namespace,
 		// Use a short retention period for tests
-		WorkflowExecutionRetentionPeriod: durationPtr(24 * time.Hour),
+		WorkflowExecutionRetentionPeriod: durationpb.New(24 * time.Hour),
 	})
 
 	// Ignore AlreadyExists errors (idempotent)
@@ -31,9 +33,6 @@ func CreateNamespace(ctx context.Context, c client.Client, namespace string) err
 			return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 		}
 	}
-
-	// Wait a bit for namespace to propagate
-	time.Sleep(200 * time.Millisecond)
 
 	return nil
 }
@@ -95,8 +94,4 @@ func CreateExternalEndpoint(ctx context.Context, c client.Client, name, targetUR
 		Name:      name,
 		URLPrefix: resp.Endpoint.UrlPrefix,
 	}, nil
-}
-
-func durationPtr(d time.Duration) *time.Duration {
-	return &d
 }

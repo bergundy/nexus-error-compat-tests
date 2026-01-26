@@ -81,6 +81,7 @@ func main() {
 		"async-op",
 		AsyncHandlerWorkflow,
 		func(ctx context.Context, input string, opts nexus.StartOperationOptions) (client.StartWorkflowOptions, error) {
+			delete(opts.CallbackHeader, "source")
 			// Use RequestID as workflow ID for idempotency
 			return client.StartWorkflowOptions{
 				ID: opts.RequestID,

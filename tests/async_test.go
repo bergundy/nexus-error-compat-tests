@@ -21,11 +21,7 @@ func TestAsyncOperationSuccess(t *testing.T) {
 	// Define caller workflow
 	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
 		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		op := nexus.NewSyncOperation[string, string]("async-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
-			panic("should not be called")
-		}) // Use SyncOperation for the client side
-
-		fut := c.ExecuteOperation(ctx, op, input, workflow.NexusOperationOptions{})
+		fut := c.ExecuteOperation(ctx, "async-op", input, workflow.NexusOperationOptions{})
 
 		// For async operations, verify we get an operation execution (with token)
 		var exec workflow.NexusOperationExecution
@@ -85,7 +81,7 @@ func TestAsyncOperationFailure(t *testing.T) {
 	// Define caller workflow
 	callerWorkflow := func(ctx workflow.Context, input string) (string, error) {
 		c := workflow.NewNexusClient(tc.CallerEndpoint, "test-service")
-		op := nexus.NewSyncOperation[string, string]("async-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
+		op := nexus.NewSyncOperation("async-op", func(ctx context.Context, input string, opts nexus.StartOperationOptions) (string, error) {
 			panic("should not be called")
 		})
 

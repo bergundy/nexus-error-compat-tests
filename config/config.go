@@ -23,28 +23,31 @@ type ServerConfig struct {
 	HTTPAddr     string        // HTTP address (e.g., "localhost:7243")
 	StartTimeout time.Duration // Timeout for server startup
 	TLS          bool          // Whether to use TLS
+	LogToFile    bool
 }
 
 // WorkerConfig holds the configuration for the handler worker process
 type WorkerConfig struct {
-	BinaryPath string // Path to the handler worker binary
-	ServerAddr string // Server gRPC address
-	Namespace  string // Namespace name
-	TaskQueue  string // Task queue name
+	Command    []string // Command to start the worker
+	ServerAddr string   // Server gRPC address
+	Namespace  string   // Namespace name
+	TaskQueue  string   // Task queue name
+	LogToFile  bool
 }
 
 // DefaultTestConfig returns a default test configuration for local development
 func DefaultTestConfig() TestConfig {
 	return TestConfig{
 		CallerServer: ServerConfig{
-			Command:      parseCommand(getEnv("CALLER_SERVER_CMD", "temporal server start-dev --port 7233 --http-port 7243 --namespace caller-ns")),
+			Command:      ParseCommand(getEnv("CALLER_SERVER_CMD", "temporal server start-dev --port 7233 --http-port 7243 --ui-port 7244")),
 			GRPCAddr:     getEnv("CALLER_GRPC_ADDR", "localhost:7233"),
 			HTTPAddr:     getEnv("CALLER_HTTP_ADDR", "localhost:7243"),
 			StartTimeout: getDuration("CALLER_START_TIMEOUT", 30*time.Second),
 			TLS:          getBool("CALLER_TLS", false),
+			LogToFile:    true,
 		},
 		HandlerServer: ServerConfig{
-			Command:      parseCommand(getEnv("HANDLER_SERVER_CMD", "temporal server start-dev --port 8233 --http-port 8243 --namespace handler-ns")),
+			Command:      ParseCommand(getEnv("HANDLER_SERVER_CMD", `temporal server start-dev --port 8233 --http-port 8243 --ui-port 8244 --dynamic-config-value component.callbacks.allowedAddresses=[{"Pattern":"*","AllowInsecure":true}]`)),
 			GRPCAddr:     getEnv("HANDLER_GRPC_ADDR", "localhost:8233"),
 			HTTPAddr:     getEnv("HANDLER_HTTP_ADDR", "localhost:8243"),
 			StartTimeout: getDuration("HANDLER_START_TIMEOUT", 30*time.Second),
@@ -83,7 +86,7 @@ func getBool(key string, defaultValue bool) bool {
 	return defaultValue
 }
 
-func parseCommand(cmd string) []string {
+func ParseCommand(cmd string) []string {
 	// Simple command parsing - split by spaces but preserve quoted strings
 	// For more complex commands, users can set the command programmatically
 	parts := strings.Fields(cmd)

@@ -15,11 +15,11 @@ import (
 
 // ServerProcess represents a running Temporal server process
 type ServerProcess struct {
-	cmd      *exec.Cmd
-	config   config.ServerConfig
-	logFile  *os.File
-	mu       sync.Mutex
-	stopped  bool
+	cmd     *exec.Cmd
+	config  config.ServerConfig
+	mu      sync.Mutex
+	stopped bool
+	logFile *os.File
 }
 
 // StartServer starts a Temporal server process and waits for it to be ready
@@ -28,16 +28,23 @@ func StartServer(ctx context.Context, cfg config.ServerConfig, name string) (*Se
 		return nil, fmt.Errorf("server command is empty")
 	}
 
-	// Create log file for server output
-	logFile, err := os.CreateTemp("", fmt.Sprintf("temporal-server-%s-*.log", name))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create log file: %w", err)
-	}
-
 	// Prepare command
 	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	var logFile *os.File
+
+	if cfg.LogToFile {
+		var err error
+		// Create log file for server output
+		logFile, err = os.CreateTemp("", fmt.Sprintf("temporal-server-%s-*.log", name))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create log file: %w", err)
+		}
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	} else {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 
 	// Set process group to allow killing child processes
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -46,7 +53,9 @@ func StartServer(ctx context.Context, cfg config.ServerConfig, name string) (*Se
 
 	// Start the server process
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
+		if cfg.LogToFile {
+			logFile.Close()
+		}
 		return nil, fmt.Errorf("failed to start server: %w", err)
 	}
 
@@ -62,7 +71,10 @@ func StartServer(ctx context.Context, cfg config.ServerConfig, name string) (*Se
 
 	if err := sp.WaitReady(startCtx); err != nil {
 		sp.Stop()
-		return nil, fmt.Errorf("server failed to become ready: %w (logs: %s)", err, logFile.Name())
+		if cfg.LogToFile {
+			return nil, fmt.Errorf("server failed to become ready: %w (logs: %s)", err, logFile.Name())
+		}
+		return nil, fmt.Errorf("server failed to become ready: %w", err)
 	}
 
 	return sp, nil
@@ -100,7 +112,9 @@ func (sp *ServerProcess) Stop() error {
 	}
 	sp.stopped = true
 
-	defer sp.logFile.Close()
+	if sp.logFile != nil {
+		defer sp.logFile.Close()
+	}
 
 	if sp.cmd == nil || sp.cmd.Process == nil {
 		return nil

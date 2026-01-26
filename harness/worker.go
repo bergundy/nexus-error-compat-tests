@@ -15,27 +15,27 @@ import (
 
 // WorkerProcess represents a running handler worker process
 type WorkerProcess struct {
-	cmd      *exec.Cmd
-	config   config.WorkerConfig
-	logFile  *os.File
-	mu       sync.Mutex
-	stopped  bool
+	cmd     *exec.Cmd
+	config  config.WorkerConfig
+	logFile *os.File
+	mu      sync.Mutex
+	stopped bool
 }
 
 // StartHandlerWorker starts the handler worker process and waits for it to be ready
 func StartHandlerWorker(ctx context.Context, cfg config.WorkerConfig) (*WorkerProcess, error) {
-	if cfg.BinaryPath == "" {
-		return nil, fmt.Errorf("worker binary path is empty")
-	}
-
-	// Create log file for worker output
-	logFile, err := os.CreateTemp("", "handler-worker-*.log")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create log file: %w", err)
+	var logFile *os.File
+	if cfg.LogToFile {
+		var err error
+		// Create log file for worker output
+		logFile, err = os.CreateTemp("", "handler-worker-*.log")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create log file: %w", err)
+		}
 	}
 
 	// Prepare command with environment variables
-	cmd := exec.CommandContext(ctx, cfg.BinaryPath)
+	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("HANDLER_SERVER_ADDR=%s", cfg.ServerAddr),
 		fmt.Sprintf("HANDLER_NAMESPACE=%s", cfg.Namespace),
@@ -45,11 +45,17 @@ func StartHandlerWorker(ctx context.Context, cfg config.WorkerConfig) (*WorkerPr
 	// Create a pipe to capture stdout for readiness detection
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		logFile.Close()
+		if logFile != nil {
+			logFile.Close()
+		}
 		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
-	cmd.Stderr = logFile
+	if logFile != nil {
+		cmd.Stderr = logFile
+	} else {
+		cmd.Stderr = os.Stderr
+	}
 
 	// Set process group to allow killing child processes
 	cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -72,18 +78,25 @@ func StartHandlerWorker(ctx context.Context, cfg config.WorkerConfig) (*WorkerPr
 	readyCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	outFile := os.Stdout
+	if logFile != nil {
+		outFile = logFile
+	}
 	readyCh := make(chan error, 1)
 	go func() {
+		var ready bool
 		scanner := bufio.NewScanner(stdoutPipe)
 		for scanner.Scan() {
 			line := scanner.Text()
-			// Write to log file as well
-			fmt.Fprintln(logFile, line)
+			// Write to log file or stdout as well
+			fmt.Fprintln(outFile, line)
 
 			// Check for ready marker
 			if line == "WORKER_READY" {
-				readyCh <- nil
-				return
+				if !ready {
+					ready = true
+					readyCh <- nil
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -97,12 +110,18 @@ func StartHandlerWorker(ctx context.Context, cfg config.WorkerConfig) (*WorkerPr
 	case err := <-readyCh:
 		if err != nil {
 			wp.Stop()
-			return nil, fmt.Errorf("worker failed to become ready: %w (logs: %s)", err, logFile.Name())
+			if logFile != nil {
+				return nil, fmt.Errorf("worker failed to become ready: %w (logs: %s)", err, logFile.Name())
+			}
+			return nil, fmt.Errorf("worker failed to become ready: %w", err)
 		}
 		return wp, nil
 	case <-readyCtx.Done():
 		wp.Stop()
-		return nil, fmt.Errorf("timeout waiting for worker to be ready (logs: %s)", logFile.Name())
+		if logFile != nil {
+			return nil, fmt.Errorf("timeout waiting for worker to be ready (logs: %s)", logFile.Name())
+		}
+		return nil, fmt.Errorf("timeout waiting for worker to be ready")
 	}
 }
 
