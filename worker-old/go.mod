@@ -1,4 +1,4 @@
-module github.com/temporalio/nexus-error-compat-tests
+module github.com/temporalio/nexus-error-compat-tests/worker-old
 
 go 1.25.4
 
