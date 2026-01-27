@@ -52,6 +52,7 @@ func DefaultTestConfig() TestConfig {
 			HTTPAddr:     getEnv("HANDLER_HTTP_ADDR", "localhost:8243"),
 			StartTimeout: getDuration("HANDLER_START_TIMEOUT", 30*time.Second),
 			TLS:          getBool("HANDLER_TLS", false),
+			LogToFile:    true,
 		},
 		CallerNamespace:  getEnv("CALLER_NAMESPACE", "caller-ns"),
 		HandlerNamespace: getEnv("HANDLER_NAMESPACE", "handler-ns"),

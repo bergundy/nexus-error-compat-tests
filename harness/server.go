@@ -32,6 +32,8 @@ func StartServer(ctx context.Context, cfg config.ServerConfig, name string) (*Se
 	cmd := exec.CommandContext(ctx, cfg.Command[0], cfg.Command[1:]...)
 	var logFile *os.File
 
+	fmt.Println("Starting server with", cfg.Command)
+
 	if cfg.LogToFile {
 		var err error
 		// Create log file for server output
