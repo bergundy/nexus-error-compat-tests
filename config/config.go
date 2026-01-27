@@ -14,6 +14,7 @@ type TestConfig struct {
 	CallerNamespace  string
 	HandlerNamespace string
 	TestTimeout      time.Duration
+	Assertions       string
 }
 
 // ServerConfig holds the configuration for a Temporal server instance
@@ -57,6 +58,7 @@ func DefaultTestConfig() TestConfig {
 		CallerNamespace:  getEnv("CALLER_NAMESPACE", "caller-ns"),
 		HandlerNamespace: getEnv("HANDLER_NAMESPACE", "handler-ns"),
 		TestTimeout:      getDuration("TEST_TIMEOUT", 60*time.Second),
+		Assertions:       getEnv("TEST_ASSERTIONS", "old"),
 	}
 }
 

@@ -37,33 +37,13 @@ nexus-error-compat-tests/
     └── async_test.go      # Async operation tests
 ```
 
-## Building
-
-### Build Handler Worker
-
-```bash
-cd worker
-go build -o ../bin/handler-worker .
-```
-
 ## Running Tests
-
-### Prerequisites
-
-You need to have Temporal server binaries available. You can:
-
-1. Use the Temporal CLI: `temporal server start-dev`
-2. Build Temporal server from source
-3. Download pre-built binaries
 
 ### Quick Start with Default Configuration
 
 The default configuration starts two local dev servers:
 
 ```bash
-# Build the handler worker first
-cd worker && go build -o ../bin/handler-worker .
-
 # Run tests
 cd ../tests
 go test -v .
@@ -74,20 +54,13 @@ go test -v .
 You can customize the test configuration using environment variables:
 
 ```bash
-# Caller server configuration
-export CALLER_SERVER_CMD="temporal server start-dev --port 7233 --http-port 7243"
-export CALLER_GRPC_ADDR="localhost:7233"
-export CALLER_HTTP_ADDR="localhost:7243"
-export CALLER_NAMESPACE="caller-ns"
+export TEST_ASSERTIONS=new
+
+# Caller server configuration (example)
+export CALLER_SERVER_CMD="go run -C $HOME/temporal/temporal ./cmd/server --config-file config/development-sqlite.yaml --allow-no-auth start"
 
 # Handler server configuration
-export HANDLER_SERVER_CMD="temporal server start-dev --port 8233 --http-port 8243"
-export HANDLER_GRPC_ADDR="localhost:8233"
-export HANDLER_HTTP_ADDR="localhost:8243"
-export HANDLER_NAMESPACE="handler-ns"
-
-# Handler worker binary
-export HANDLER_WORKER_BIN="./bin/handler-worker"
+export HANDLER_SERVER_CMD="go run -C $HOME/temporal/temporal ./cmd/server --config-file config/development-sqlite-alt-port.yaml --allow-no-auth start"
 
 # Test timeout
 export TEST_TIMEOUT="60s"

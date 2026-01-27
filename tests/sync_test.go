@@ -49,10 +49,13 @@ func TestSyncOperationFailure(t *testing.T) {
 				require.Equal(t, tc.CallerEndpoint, nexusErr.Endpoint)
 				require.Equal(t, "test-service", nexusErr.Service)
 				require.Equal(t, "sync-op", nexusErr.Operation)
-				// Old behavior
-				var appErr *temporal.ApplicationError
-				require.ErrorAs(t, nexusErr.Cause, &appErr)
-				require.Equal(t, "operation failed for test", appErr.Message())
+				if tc.Config.Assertions == "old" {
+					var appErr *temporal.ApplicationError
+					require.ErrorAs(t, nexusErr.Cause, &appErr)
+					require.Equal(t, "operation failed for test", appErr.Message())
+				} else {
+					require.Equal(t, "operation failed for test", nexusErr.Message)
+				}
 			},
 		},
 		{

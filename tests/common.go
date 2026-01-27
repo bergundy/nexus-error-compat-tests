@@ -11,6 +11,7 @@ import (
 
 // TestContext provides access to the test environment for individual tests
 type TestContext struct {
+	Config           config.TestConfig
 	CallerClient     client.Client
 	HandlerClient    client.Client
 	CallerEndpoint   string
@@ -42,6 +43,7 @@ func NewTestContext(t *testing.T, cfg config.TestConfig) *TestContext {
 	})
 
 	return &TestContext{
+		Config:           cfg,
 		CallerClient:     env.CallerClient,
 		HandlerClient:    env.HandlerClient,
 		CallerEndpoint:   env.CallerEndpointName,
