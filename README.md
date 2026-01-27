@@ -11,221 +11,29 @@ The test harness supports a multi-process architecture for comprehensive compati
 - **Caller Server**: Temporal server for the caller namespace
 - **Handler Server**: Temporal server for the handler namespace
 
-### Endpoint Configuration
-
-- **Handler Side**: Worker-targeted endpoint pointing to handler worker's task queue
-- **Caller Side**: External endpoint pointing to handler server's Nexus HTTP API
-
-## Project Structure
-
-```
-nexus-error-compat-tests/
-├── bin/
-│   └── handler-worker      # Handler worker binary
-├── config/
-│   └── config.go          # Configuration structures
-├── harness/
-│   ├── server.go          # Server process management
-│   ├── worker.go          # Worker process management
-│   ├── setup.go           # Namespace and endpoint creation
-│   └── coordinator.go     # Test environment orchestration
-├── worker/
-│   └── main.go            # Standalone handler worker
-└── tests/
-    ├── common.go          # Test utilities
-    ├── sync_test.go       # Sync operation tests
-    └── async_test.go      # Async operation tests
-```
-
 ## Running Tests
 
-### Quick Start with Default Configuration
+`run.sh` takes four arguments for the following:
+1. caller SDK
+1. caller server
+1. handler server
+1. handler SDK
 
-The default configuration starts two local dev servers:
+Valid values are `old` or `new`.
 
-```bash
-# Run tests
-cd ../tests
-go test -v .
-```
-
-### Configuration via Environment Variables
-
-You can customize the test configuration using environment variables:
+See example here:
 
 ```bash
-export TEST_ASSERTIONS=new
-
-# Caller server configuration (example)
-export CALLER_SERVER_CMD="go run -C $HOME/temporal/temporal ./cmd/server --config-file config/development-sqlite.yaml --allow-no-auth start"
-
-# Handler server configuration
-export HANDLER_SERVER_CMD="go run -C $HOME/temporal/temporal ./cmd/server --config-file config/development-sqlite-alt-port.yaml --allow-no-auth start"
-
-# Test timeout
-export TEST_TIMEOUT="60s"
-
-# Run tests
-go test -v ./tests/
+bash ./run.sh new old new old
 ```
 
-### Testing Different Version Combinations
+The test assertions can be modified using the `TEST_ASSERTIONS` env var, to run with modified assertions set this env
+var to `new`.
 
-The power of this test harness is the ability to test different version combinations:
+The `new` SDK and `server` are in:
 
-#### Example 1: Old Caller SDK + New Handler SDK
+- The `temporalio/temporal` repo on the `nexus-error-model` branch
+- The `temporalio/sdk-go` repo in Quinn's fork at `git@github.com:Quinn-With-Two-Ns/sdk-go.git` on the `nexus-error-changes` branch
 
-```bash
-# Build caller-side code with SDK v1.25.0
-go mod edit -require=go.temporal.io/sdk@v1.25.0
-go test -c -o bin/caller-test ./tests/
+**NOTE**: Server processes may get stuck and you may end up falsly thinking you are testing with the right server versions. Run `pkill temporal` to ensure that no lingering server processes are left between runs.
 
-# Build handler worker with SDK v1.26.0
-cd worker
-go mod edit -require=go.temporal.io/sdk@v1.26.0
-go build -o ../bin/handler-worker-v1.26 .
-
-# Run tests
-export HANDLER_WORKER_BIN="./bin/handler-worker-v1.26"
-./bin/caller-test -test.v
-```
-
-#### Example 2: New SDK + Old Server
-
-```bash
-# Use latest SDK (already installed)
-cd worker && go build -o ../bin/handler-worker .
-
-# Configure to use old server binaries
-export CALLER_SERVER_CMD="/path/to/temporal-v1.24/temporal server start-dev --port 7233"
-export HANDLER_SERVER_CMD="/path/to/temporal-v1.24/temporal server start-dev --port 8233"
-
-# Run tests
-go test -v ./tests/
-```
-
-#### Example 3: Old Caller Server + New Handler Server
-
-```bash
-export CALLER_SERVER_CMD="/path/to/temporal-v1.24/temporal server start-dev --port 7233"
-export HANDLER_SERVER_CMD="/path/to/temporal-v1.26/temporal server start-dev --port 8233"
-
-go test -v ./tests/
-```
-
-## Test Scenarios
-
-### Sync Operation Tests
-
-- **TestSyncOperationSuccess**: Successful sync operation execution
-- **TestSyncOperationFailure**: Tests various failure scenarios:
-  - Operation failures
-  - Application errors
-  - Handler errors
-  - Cancellation
-- **TestSyncOperationEcho**: Echo functionality with arbitrary input
-
-### Async Operation Tests
-
-- **TestAsyncOperationSuccess**: Successful async operation execution
-- **TestAsyncOperationFailure**: Tests workflow failures and application errors
-- **TestAsyncOperationCancellation**: Tests cancellation scenarios:
-  - Cancel after operation started
-  - Cancel before operation sent
-- **TestAsyncOperationEcho**: Echo functionality for async operations
-
-## Handler Worker Operations
-
-The handler worker (`worker/main.go`) implements two Nexus operations:
-
-### Sync Operation: `sync-op`
-
-Handles different test scenarios based on input:
-- `"success"` - Returns success
-- `"operation-failure"` - Returns operation failed error
-- `"application-error"` - Returns application error
-- `"handler-error"` - Returns handler error
-- `"canceled"` - Returns canceled error
-- Any other input - Echoes with prefix
-
-### Async Operation: `async-op`
-
-Backed by a workflow that handles:
-- `"success"` - Returns success
-- `"workflow-failure"` - Returns workflow failure
-- `"application-error"` - Returns application error
-- `"wait-for-cancel"` - Waits for cancellation
-- Any other input - Echoes with "async" prefix
-
-## Configuration Structure
-
-The test harness uses a structured configuration:
-
-```go
-type TestConfig struct {
-    CallerServer     ServerConfig
-    HandlerServer    ServerConfig
-    CallerNamespace  string
-    HandlerNamespace string
-    TestTimeout      time.Duration
-}
-
-type ServerConfig struct {
-    Command      []string      // Command to start server
-    GRPCAddr     string        // gRPC address
-    HTTPAddr     string        // HTTP address
-    StartTimeout time.Duration // Startup timeout
-    TLS          bool          // Use TLS
-}
-```
-
-## Troubleshooting
-
-### Servers Not Starting
-
-Check the server logs in `/tmp/temporal-server-*.log`. The test harness captures stdout/stderr to temporary files.
-
-### Worker Not Ready
-
-Check the worker logs in `/tmp/handler-worker-*.log`. The worker must print `WORKER_READY` to be considered ready.
-
-### Port Conflicts
-
-If ports are already in use, configure different ports via environment variables:
-
-```bash
-export CALLER_GRPC_ADDR="localhost:9233"
-export CALLER_HTTP_ADDR="localhost:9243"
-export HANDLER_GRPC_ADDR="localhost:10233"
-export HANDLER_HTTP_ADDR="localhost:10243"
-```
-
-### Cleanup Issues
-
-The test harness automatically cleans up resources. If processes are left running:
-
-```bash
-# Find and kill any stray temporal processes
-pkill -f "temporal server"
-```
-
-## Development
-
-### Adding New Tests
-
-1. Create a new test function in `tests/sync_test.go` or `tests/async_test.go`
-2. Use `NewTestContext(t, config.DefaultTestConfig())` to set up the environment
-3. Define your caller workflow
-4. Start a caller worker and register your workflow
-5. Execute and verify the workflow
-
-### Adding New Operation Scenarios
-
-1. Edit `worker/main.go`
-2. Add new cases to the switch statements in sync or async operation handlers
-3. Rebuild the worker binary: `cd worker && go build -o ../bin/handler-worker .`
-4. Add corresponding tests in `tests/`
-
-## License
-
-MIT
