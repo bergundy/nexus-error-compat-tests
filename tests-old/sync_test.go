@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -49,13 +50,9 @@ func TestSyncOperationFailure(t *testing.T) {
 				require.Equal(t, tc.CallerEndpoint, nexusErr.Endpoint)
 				require.Equal(t, "test-service", nexusErr.Service)
 				require.Equal(t, "sync-op", nexusErr.Operation)
-				if tc.Config.Assertions == "old" {
-					var appErr *temporal.ApplicationError
-					require.ErrorAs(t, nexusErr.Cause, &appErr)
-					require.Equal(t, "operation failed for test", appErr.Message())
-				} else {
-					require.Equal(t, "operation failed for test", nexusErr.Message)
-				}
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, nexusErr.Cause, &appErr)
+				require.Equal(t, "operation failed for test", appErr.Message())
 			},
 		},
 		{
@@ -64,18 +61,13 @@ func TestSyncOperationFailure(t *testing.T) {
 			func(t *testing.T, err error) {
 				var nexusErr *temporal.NexusOperationError
 				require.ErrorAs(t, err, &nexusErr)
-				if tc.Config.Assertions == "old" {
-					var appErr *temporal.ApplicationError
-					require.ErrorAs(t, nexusErr.Cause, &appErr)
-					require.Equal(t, "application error for test", appErr.Message())
-					require.Equal(t, "TestErrorType", appErr.Type())
-					var details string
-					require.NoError(t, appErr.Details(&details))
-					require.Equal(t, "details", details)
-				} else {
-					require.Equal(t, "application error for test", nexusErr.Message)
-					require.Nil(t, nexusErr.Cause)
-				}
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, nexusErr.Cause, &appErr)
+				require.Equal(t, "application error for test", appErr.Message())
+				require.Equal(t, "TestErrorType", appErr.Type())
+				var details string
+				require.NoError(t, appErr.Details(&details))
+				require.Equal(t, "details", details)
 			},
 		},
 		{
@@ -131,14 +123,15 @@ func TestSyncOperationFailure(t *testing.T) {
 			func(t *testing.T, err error) {
 				var canceledErr *temporal.CanceledError
 				require.ErrorAs(t, err, &canceledErr)
-				if tc.Config.Assertions == "old" {
-					var details string
-					require.NoError(t, canceledErr.Details(&details))
-					require.Equal(t, "cancel-details", details)
-				} else {
-					require.Equal(t, "canceled", canceledErr.Error())
-					require.False(t, canceledErr.HasDetails())
-				}
+				require.Equal(t, "canceled", canceledErr.Error())
+				require.False(t, canceledErr.HasDetails())
+				var appErr *temporal.ApplicationError
+				require.ErrorAs(t, errors.Unwrap(canceledErr), &appErr)
+				require.Equal(t, "application error for test", appErr.Message())
+				require.Equal(t, "TestErrorType", appErr.Type())
+				var details string
+				require.NoError(t, appErr.Details(&details))
+				require.Equal(t, "details", details)
 			},
 		},
 	}

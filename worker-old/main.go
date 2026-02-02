@@ -61,7 +61,7 @@ func main() {
 		case "operation-canceled-error-with-details":
 			return "", &nexus.OperationError{
 				State: nexus.OperationStateCanceled,
-				Cause: temporal.NewCanceledError("cancel-details"),
+				Cause: temporal.NewApplicationError("application error for test", "TestErrorType", "details"),
 			}
 		case "wrapped-application-error":
 			return "", &nexus.OperationError{
