@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,11 +16,12 @@ type TestConfig struct {
 	CallerNamespace  string
 	HandlerNamespace string
 	TestTimeout      time.Duration
-	Assertions       string
+	NewHandlerWorker bool
 }
 
 // ServerConfig holds the configuration for a Temporal server instance
 type ServerConfig struct {
+	New          bool
 	Command      []string      // Command to start the server (e.g., ["temporal", "server", "start-dev"])
 	GRPCAddr     string        // gRPC address (e.g., "localhost:7233")
 	HTTPAddr     string        // HTTP address (e.g., "localhost:7243")
@@ -29,6 +32,7 @@ type ServerConfig struct {
 
 // WorkerConfig holds the configuration for the handler worker process
 type WorkerConfig struct {
+	New        bool
 	Command    []string // Command to start the worker
 	ServerAddr string   // Server gRPC address
 	Namespace  string   // Namespace name
@@ -38,27 +42,48 @@ type WorkerConfig struct {
 
 // DefaultTestConfig returns a default test configuration for local development
 func DefaultTestConfig() TestConfig {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	wd = filepath.Dir(wd)
+
+	defaultCallerServerCmd := "temporal server start-dev --port 7233 --http-port 7243 --ui-port 7244"
+	newCallerServer := getBool("NEW_CALLER_SERVER", false)
+	if newCallerServer {
+		defaultCallerServerCmd = "go run -C ../../temporal ./cmd/server --config-file config/development-sqlite.yaml --allow-no-auth start"
+	}
+
+	defaultHandlerServerCmd := `temporal server start-dev --port 8233 --http-port 8243 --ui-port 8244 --dynamic-config-value component.callbacks.allowedAddresses=[{"Pattern":"*","AllowInsecure":true}]`
+	newHandlerServer := getBool("NEW_HANDLER_SERVER", false)
+	if newHandlerServer {
+		configFile := filepath.Join(wd, "/development-sqlite-alt-port.yaml")
+		defaultHandlerServerCmd = fmt.Sprintf("go run -C ../../temporal ./cmd/server --config-file %s --allow-no-auth start", configFile)
+	}
+
 	return TestConfig{
 		CallerServer: ServerConfig{
-			Command:      ParseCommand(getEnv("CALLER_SERVER_CMD", "temporal server start-dev --port 7233 --http-port 7243 --ui-port 7244")),
+			New:          newCallerServer,
+			Command:      ParseCommand(getEnv("CALLER_SERVER_CMD", defaultCallerServerCmd)),
 			GRPCAddr:     getEnv("CALLER_GRPC_ADDR", "localhost:7233"),
 			HTTPAddr:     getEnv("CALLER_HTTP_ADDR", "localhost:7243"),
 			StartTimeout: getDuration("CALLER_START_TIMEOUT", 30*time.Second),
 			TLS:          getBool("CALLER_TLS", false),
-			LogToFile:    true,
+			LogToFile:    getBool("CALLER_SERVER_LOG_TO_FILE", true),
 		},
 		HandlerServer: ServerConfig{
-			Command:      ParseCommand(getEnv("HANDLER_SERVER_CMD", `temporal server start-dev --port 8233 --http-port 8243 --ui-port 8244 --dynamic-config-value component.callbacks.allowedAddresses=[{"Pattern":"*","AllowInsecure":true}]`)),
+			New:          newHandlerServer,
+			Command:      ParseCommand(getEnv("HANDLER_SERVER_CMD", defaultHandlerServerCmd)),
 			GRPCAddr:     getEnv("HANDLER_GRPC_ADDR", "localhost:8233"),
 			HTTPAddr:     getEnv("HANDLER_HTTP_ADDR", "localhost:8243"),
 			StartTimeout: getDuration("HANDLER_START_TIMEOUT", 30*time.Second),
 			TLS:          getBool("HANDLER_TLS", false),
-			LogToFile:    true,
+			LogToFile:    getBool("HANDLER_SERVER_LOG_TO_FILE", true),
 		},
 		CallerNamespace:  getEnv("CALLER_NAMESPACE", "caller-ns"),
 		HandlerNamespace: getEnv("HANDLER_NAMESPACE", "handler-ns"),
 		TestTimeout:      getDuration("TEST_TIMEOUT", 60*time.Second),
-		Assertions:       getEnv("TEST_ASSERTIONS", "old"),
+		NewHandlerWorker: getBool("NEW_HANDLER_WORKER", false),
 	}
 }
 

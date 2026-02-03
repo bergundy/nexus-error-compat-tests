@@ -2,17 +2,18 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/nexus-rpc/sdk-go/nexus"
 	"github.com/stretchr/testify/require"
 	"github.com/temporalio/nexus-error-compat-tests/config"
+	"go.temporal.io/api/failure/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 // TestSyncOperationFailure tests operation failure scenarios
@@ -63,6 +64,12 @@ func TestSyncOperationFailure(t *testing.T) {
 				require.ErrorAs(t, err, &nexusErr)
 				var appErr *temporal.ApplicationError
 				require.ErrorAs(t, nexusErr.Cause, &appErr)
+
+				if tc.Config.CallerServer.New && tc.Config.HandlerServer.New && tc.Config.NewHandlerWorker {
+					require.Equal(t, "OperationError", appErr.Type())
+					require.Equal(t, "", appErr.Message())
+					require.ErrorAs(t, appErr.Unwrap(), &appErr)
+				}
 				require.Equal(t, "application error for test", appErr.Message())
 				require.Equal(t, "TestErrorType", appErr.Type())
 				var details string
@@ -118,20 +125,50 @@ func TestSyncOperationFailure(t *testing.T) {
 			},
 		},
 		{
-			"OperationCancelationWithDetails",
-			"operation-canceled-error-with-details",
+			"OperationCancelationWithAppFailureCause",
+			"operation-canceled-error-with-app-failure-cause",
 			func(t *testing.T, err error) {
 				var canceledErr *temporal.CanceledError
 				require.ErrorAs(t, err, &canceledErr)
 				require.Equal(t, "canceled", canceledErr.Error())
-				require.False(t, canceledErr.HasDetails())
+				if tc.Config.CallerServer.New {
+					require.False(t, canceledErr.HasDetails())
+					// Go SDK doesn't carry through the cause from the workflow to the client
+					require.Nil(t, canceledErr.Unwrap())
+				} else {
+					var nexusFailure nexus.Failure
+					require.NoError(t, canceledErr.Details(&nexusFailure))
+					var temporalFailure failure.Failure
+					require.Equal(t, "temporal.api.failure.v1.Failure", nexusFailure.Metadata["type"])
+					require.NoError(t, protojson.Unmarshal(nexusFailure.Details, &temporalFailure))
+					fc := temporal.GetDefaultFailureConverter()
+					err := fc.FailureToError(&temporalFailure)
+					var appErr *temporal.ApplicationError
+					require.ErrorAs(t, err, &appErr)
+					// NOTE: old server loses the message.
+					require.Equal(t, "TestErrorType", appErr.Type())
+					var details string
+					require.NoError(t, appErr.Details(&details))
+					require.Equal(t, "details", details)
+				}
+			},
+		},
+		{
+			"HandlerErrorWithFailureErrorCause",
+			"handler-error-with-failure-error-cause",
+			func(t *testing.T, err error) {
+				var handlerErr *nexus.HandlerError
+				require.ErrorAs(t, err, &handlerErr)
+				require.Equal(t, nexus.HandlerErrorTypeBadRequest, handlerErr.Type)
 				var appErr *temporal.ApplicationError
-				require.ErrorAs(t, errors.Unwrap(canceledErr), &appErr)
-				require.Equal(t, "application error for test", appErr.Message())
-				require.Equal(t, "TestErrorType", appErr.Type())
-				var details string
-				require.NoError(t, appErr.Details(&details))
-				require.Equal(t, "details", details)
+				require.ErrorAs(t, handlerErr.Cause, &appErr)
+				// TODO: figure out if we want this special handling...
+				if tc.Config.NewHandlerWorker {
+					require.Equal(t, "NexusFailure", appErr.Type())
+				} else {
+					require.Equal(t, "FailureError", appErr.Type())
+				}
+				require.Equal(t, "cause", appErr.Message())
 			},
 		},
 	}

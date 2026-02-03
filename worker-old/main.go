@@ -52,8 +52,6 @@ func main() {
 
 	// Sync operation
 	syncOp := nexus.NewSyncOperation("sync-op", func(ctx context.Context, outcome string, opts nexus.StartOperationOptions) (string, error) {
-		// TODO:
-		// - OperationError and HandlerError with both message and cause
 		// Handle different test scenarios
 		switch outcome {
 		case "operation-failed-error":

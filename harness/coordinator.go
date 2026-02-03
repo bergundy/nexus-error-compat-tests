@@ -135,7 +135,11 @@ func SetupTestEnvironment(ctx context.Context, cfg config.TestConfig) (*TestEnvi
 	fmt.Printf("Starting handler worker for task queue %s...\n", env.HandlerTaskQueue)
 	workerCmdStr := os.Getenv("HANDLER_WORKER_CMD")
 	if workerCmdStr == "" {
-		workerCmdStr = "go run -C ../worker-old ."
+		if os.Getenv("NEW_HANDLER_WORKER") == "true" {
+			workerCmdStr = "go run -C ../worker-new ."
+		} else {
+			workerCmdStr = "go run -C ../worker-old ."
+		}
 	}
 	workerCmd := config.ParseCommand(workerCmdStr)
 

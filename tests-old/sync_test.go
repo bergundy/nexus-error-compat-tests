@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +66,7 @@ func TestSyncOperationFailure(t *testing.T) {
 				var appErr *temporal.ApplicationError
 				require.ErrorAs(t, nexusErr.Cause, &appErr)
 
-				if tc.Config.Assertions == "new-server" {
+				if tc.Config.CallerServer.New && tc.Config.HandlerServer.New && tc.Config.NewHandlerWorker {
 					require.Equal(t, "OperationError", appErr.Type())
 					require.Equal(t, "", appErr.Message())
 					require.ErrorAs(t, appErr.Unwrap(), &appErr)
@@ -133,15 +132,10 @@ func TestSyncOperationFailure(t *testing.T) {
 				var canceledErr *temporal.CanceledError
 				require.ErrorAs(t, err, &canceledErr)
 				require.Equal(t, "canceled", canceledErr.Error())
-				if tc.Config.Assertions == "new-server" {
+				if tc.Config.CallerServer.New {
 					require.False(t, canceledErr.HasDetails())
-					var appErr *temporal.ApplicationError
-					require.ErrorAs(t, errors.Unwrap(canceledErr), &appErr)
-					require.Equal(t, "application error for test", appErr.Message())
-					require.Equal(t, "TestErrorType", appErr.Type())
-					var details string
-					require.NoError(t, appErr.Details(&details))
-					require.Equal(t, "details", details)
+					// Old SDKs do not support causes for canceled errors.
+					require.Nil(t, errors.Unwrap(canceledErr))
 				} else {
 					var nexusFailure nexus.Failure
 					require.NoError(t, canceledErr.Details(&nexusFailure))
@@ -170,7 +164,7 @@ func TestSyncOperationFailure(t *testing.T) {
 				var appErr *temporal.ApplicationError
 				require.ErrorAs(t, handlerErr.Cause, &appErr)
 				// TODO: figure out if we want this special handling...
-				if strings.Contains(tc.Config.Assertions, "new-handler-worker") {
+				if tc.Config.NewHandlerWorker {
 					require.Equal(t, "NexusFailure", appErr.Type())
 				} else {
 					require.Equal(t, "FailureError", appErr.Type())
