@@ -58,10 +58,20 @@ func main() {
 		switch outcome {
 		case "operation-failed-error":
 			return "", nexus.NewOperationFailedError("operation failed for test")
-		case "operation-canceled-error-with-details":
+		case "operation-canceled-error-with-app-failure-cause":
 			return "", &nexus.OperationError{
 				State: nexus.OperationStateCanceled,
 				Cause: temporal.NewApplicationError("application error for test", "TestErrorType", "details"),
+			}
+		case "handler-error-with-failure-error-cause":
+			return "", &nexus.HandlerError{
+				Type:    nexus.HandlerErrorTypeBadRequest,
+				Message: "whatever",
+				Cause: &nexus.FailureError{
+					Failure: nexus.Failure{
+						Message: "cause",
+					},
+				},
 			}
 		case "wrapped-application-error":
 			return "", &nexus.OperationError{
