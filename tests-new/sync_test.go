@@ -106,6 +106,9 @@ func TestSyncOperationFailure(t *testing.T) {
 				var handlerErr *nexus.HandlerError
 				require.ErrorAs(t, nexusErr.Cause, &handlerErr)
 				require.Equal(t, nexus.HandlerErrorTypeBadRequest, handlerErr.Type)
+				if tc.Config.CallerServer.New && tc.Config.HandlerServer.New && tc.Config.NewHandlerWorker {
+					require.Equal(t, "handler error for test", handlerErr.Message)
+				}
 				require.False(t, handlerErr.Retryable())
 				// Old behavior
 				var appErr *temporal.ApplicationError
@@ -141,8 +144,7 @@ func TestSyncOperationFailure(t *testing.T) {
 					var temporalFailure failure.Failure
 					require.Equal(t, "temporal.api.failure.v1.Failure", nexusFailure.Metadata["type"])
 					require.NoError(t, protojson.Unmarshal(nexusFailure.Details, &temporalFailure))
-					fc := temporal.GetDefaultFailureConverter()
-					err := fc.FailureToError(&temporalFailure)
+					err := tc.Environment.FailureConverter.FailureToError(&temporalFailure)
 					var appErr *temporal.ApplicationError
 					require.ErrorAs(t, err, &appErr)
 					// NOTE: old server loses the message.
@@ -160,6 +162,9 @@ func TestSyncOperationFailure(t *testing.T) {
 				var handlerErr *nexus.HandlerError
 				require.ErrorAs(t, err, &handlerErr)
 				require.Equal(t, nexus.HandlerErrorTypeBadRequest, handlerErr.Type)
+				if tc.Config.CallerServer.New && tc.Config.HandlerServer.New && tc.Config.NewHandlerWorker {
+					require.Equal(t, "whatever", handlerErr.Message)
+				}
 				var appErr *temporal.ApplicationError
 				require.ErrorAs(t, handlerErr.Cause, &appErr)
 				// TODO: figure out if we want this special handling...

@@ -11,10 +11,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/temporalio/nexus-error-compat-tests/config"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
+	"go.temporal.io/sdk/temporal"
 )
 
 // TestEnvironment represents the complete test environment with all resources
 type TestEnvironment struct {
+	FailureConverter   converter.FailureConverter
 	CallerClient       client.Client
 	HandlerClient      client.Client
 	CallerEndpointName string
@@ -65,9 +68,19 @@ func SetupTestEnvironment(ctx context.Context, cfg config.TestConfig) (*TestEnvi
 
 	// Step 3: Create caller client
 	fmt.Printf("Creating caller client for namespace %s...\n", cfg.CallerNamespace)
+	encodeFailureAttributes := os.Getenv("ENCODE_FAILURE_ATTRIBUTES") == "true"
+	dataConverter := converter.GetDefaultDataConverter()
+	if encodeFailureAttributes {
+		dataConverter = converter.NewCodecDataConverter(dataConverter, converter.NewZlibCodec(converter.ZlibCodecOptions{AlwaysEncode: true}))
+	}
+	env.FailureConverter = temporal.NewDefaultFailureConverter(temporal.DefaultFailureConverterOptions{
+		EncodeCommonAttributes: encodeFailureAttributes,
+		DataConverter:          dataConverter,
+	})
 	callerClient, err := client.Dial(client.Options{
-		HostPort:  cfg.CallerServer.GRPCAddr,
-		Namespace: cfg.CallerNamespace,
+		HostPort:         cfg.CallerServer.GRPCAddr,
+		Namespace:        cfg.CallerNamespace,
+		FailureConverter: env.FailureConverter,
 	})
 	if err != nil {
 		env.Cleanup()

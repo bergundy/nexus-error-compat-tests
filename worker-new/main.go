@@ -10,6 +10,7 @@ import (
 
 	"github.com/nexus-rpc/sdk-go/nexus"
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
@@ -26,6 +27,11 @@ func main() {
 	serverAddr := os.Getenv("HANDLER_SERVER_ADDR")
 	namespace := os.Getenv("HANDLER_NAMESPACE")
 	taskQueue := os.Getenv("HANDLER_TASK_QUEUE")
+	encodeFailureAttributes := os.Getenv("ENCODE_FAILURE_ATTRIBUTES") == "true"
+	dataConverter := converter.GetDefaultDataConverter()
+	if encodeFailureAttributes {
+		dataConverter = converter.NewCodecDataConverter(dataConverter, converter.NewZlibCodec(converter.ZlibCodecOptions{AlwaysEncode: true}))
+	}
 
 	if serverAddr == "" || namespace == "" || taskQueue == "" {
 		log.Fatal("Missing required environment variables: HANDLER_SERVER_ADDR, HANDLER_NAMESPACE, HANDLER_TASK_QUEUE")
@@ -35,6 +41,10 @@ func main() {
 	c, err := client.Dial(client.Options{
 		HostPort:  serverAddr,
 		Namespace: namespace,
+		FailureConverter: temporal.NewDefaultFailureConverter(temporal.DefaultFailureConverterOptions{
+			EncodeCommonAttributes: encodeFailureAttributes,
+			DataConverter:          dataConverter,
+		}),
 	})
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)

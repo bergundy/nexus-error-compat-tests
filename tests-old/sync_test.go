@@ -142,8 +142,7 @@ func TestSyncOperationFailure(t *testing.T) {
 					var temporalFailure failure.Failure
 					require.Equal(t, "temporal.api.failure.v1.Failure", nexusFailure.Metadata["type"])
 					require.NoError(t, protojson.Unmarshal(nexusFailure.Details, &temporalFailure))
-					fc := temporal.GetDefaultFailureConverter()
-					err := fc.FailureToError(&temporalFailure)
+					err := tc.Environment.FailureConverter.FailureToError(&temporalFailure)
 					var appErr *temporal.ApplicationError
 					require.ErrorAs(t, err, &appErr)
 					// NOTE: old server loses the message.
