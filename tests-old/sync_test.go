@@ -54,6 +54,9 @@ func TestSyncOperationFailure(t *testing.T) {
 				require.Equal(t, "sync-op", nexusErr.Operation)
 				var appErr *temporal.ApplicationError
 				require.ErrorAs(t, nexusErr.Cause, &appErr)
+				if tc.Config.CallerServer.New && tc.Config.HandlerServer.New && tc.Config.NewHandlerWorker {
+					require.Equal(t, "OperationError", appErr.Type())
+				}
 				require.Equal(t, "operation failed for test", appErr.Message())
 			},
 		},
@@ -68,7 +71,7 @@ func TestSyncOperationFailure(t *testing.T) {
 
 				if tc.Config.CallerServer.New && tc.Config.HandlerServer.New && tc.Config.NewHandlerWorker {
 					require.Equal(t, "OperationError", appErr.Type())
-					require.Equal(t, "", appErr.Message())
+					require.Equal(t, "wrapper error", appErr.Message())
 					require.ErrorAs(t, appErr.Unwrap(), &appErr)
 				}
 				require.Equal(t, "application error for test", appErr.Message())

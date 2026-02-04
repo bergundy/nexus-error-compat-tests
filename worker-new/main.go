@@ -62,8 +62,6 @@ func main() {
 
 	// Sync operation
 	syncOp := nexus.NewSyncOperation("sync-op", func(ctx context.Context, outcome string, opts nexus.StartOperationOptions) (string, error) {
-		// TODO:
-		// - OperationError and HandlerError with both message and cause
 		// Handle different test scenarios
 		switch outcome {
 		case "operation-failed-error":
@@ -85,8 +83,9 @@ func main() {
 			}
 		case "wrapped-application-error":
 			return "", &nexus.OperationError{
-				State: nexus.OperationStateFailed,
-				Cause: temporal.NewApplicationError("application error for test", "TestErrorType", "details"),
+				State:   nexus.OperationStateFailed,
+				Message: "wrapper error",
+				Cause:   temporal.NewApplicationError("application error for test", "TestErrorType", "details"),
 			}
 		case "application-error":
 			return "", temporal.NewApplicationErrorWithOptions("application error for test", "TestErrorType", temporal.ApplicationErrorOptions{

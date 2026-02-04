@@ -31,4 +31,6 @@ fi
 
 go test -C "./tests-${CALLER_WORKER}/" -timeout 15s -v -run '^(TestAsyncOperationFailure)$'
 sleep 2
+go test -C "./tests-${CALLER_WORKER}/" -timeout 15s -v -run '^(TestAsyncOperationCancellation)$'
+sleep 2
 go test -C "./tests-${CALLER_WORKER}/" -timeout 15s -v -run '^(TestSyncOperationFailure)$'

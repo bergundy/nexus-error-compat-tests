@@ -3,7 +3,7 @@ module github.com/temporalio/nexus-error-compat-tests/worker-new
 go 1.25.4
 
 require (
-	github.com/nexus-rpc/sdk-go v0.5.2-0.20251217172131-63a8027ef960
+	github.com/nexus-rpc/sdk-go v0.5.2-0.20260204003755-91a85ecf8dd7
 	go.temporal.io/sdk v1.39.0
 )
 

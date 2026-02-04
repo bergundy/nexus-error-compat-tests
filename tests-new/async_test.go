@@ -99,7 +99,6 @@ func TestAsyncOperationFailure(t *testing.T) {
 
 // TestAsyncOperationCancellation tests cancellation of async operations
 func TestAsyncOperationCancellation(t *testing.T) {
-	t.Skip("server defunct")
 	tc := NewTestContext(t, config.DefaultTestConfig())
 
 	// Define caller workflow with cancellation support
